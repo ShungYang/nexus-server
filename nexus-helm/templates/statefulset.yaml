@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "nexus.fullname" . }}
+  labels:
+{{ include "nexus.labels" . | indent 4 }}
+{{- if .Values.statefulset.annotations }}
+  annotations:
+    {{ toYaml .Values.statefulset.annotations | nindent 4 }}
+{{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nexus.selectorLabels" . | nindent 6 }}
+  serviceName: {{ include "nexus.fullname" . }}
+  replicas: 1
+  minReadySeconds: {{ .Values.statefulset.minReadySeconds }}
+  template:
+    metadata:
+      annotations:
+        checksum/configmap-properties: {{ include (print .Template.BasePath "/configmap-properties.yaml") $ | sha256sum }}
+        {{- if .Values.nexus.podAnnotations }}
+          {{ toYaml .Values.nexus.podAnnotations | nindent 8}}
+        {{- end }}
+      labels:
+        {{- include "nexus.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nexus.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.statefulset.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{ toYaml .Values.nexus.env | nindent 12 }}
+          resources:
+            {{ toYaml .Values.nexus.resources | nindent 12 }}
+          ports:
+            - name: nexus-ui
+              containerPort: {{ .Values.nexus.nexusPort }}
+            {{- if .Values.nexus.docker.enabled }}
+            {{- range .Values.nexus.docker.registries }}
+            - name: docker-{{ .port }} # must be no more than 15 characters
+              containerPort: {{ .port }}
+            {{- end }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.nexus.livenessProbe.path }}
+              port: {{ .Values.nexus.nexusPort }}
+            initialDelaySeconds: {{ .Values.nexus.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nexus.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.nexus.livenessProbe.failureThreshold }}
+            {{- if .Values.nexus.livenessProbe.timeoutSeconds }}
+            timeoutSeconds: {{ .Values.nexus.livenessProbe.timeoutSeconds }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.nexus.readinessProbe.path }}
+              port: {{ .Values.nexus.nexusPort }}
+            initialDelaySeconds: {{ .Values.nexus.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nexus.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.nexus.readinessProbe.failureThreshold }}
+            {{- if .Values.nexus.readinessProbe.timeoutSeconds }}
+            timeoutSeconds: {{ .Values.nexus.readinessProbe.timeoutSeconds }}
+            {{- end }}
+          volumeMounts:
+            - mountPath: /nexus-data
+              name: {{ template "nexus.name" . }}-data
+            {{- if .Values.config.enabled }}
+            - mountPath: {{ .Values.config.mountPath }}
+              name: {{ template "nexus.name" . }}-conf
+            {{- end }}
+            {{- if .Values.nexus.properties.override }}
+            - mountPath: /nexus-data/etc/nexus.properties
+              name: {{ template "nexus.name" . }}-properties
+              subPath: nexus.properties
+            {{- end }}
+            {{- if .Values.secret.enabled }}
+            - mountPath: {{ .Values.secret.mountPath }}
+              name: {{ template "nexus.name" . }}-secret
+              readOnly: {{ .Values.secret.readOnly }}
+            {{- end }}
+      {{- if .Values.nexus.securityContext }}
+      securityContext:
+        {{ toYaml .Values.nexus.securityContext | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates: # Persistent Volume Claim 的定義
+  - metadata:
+      name: {{ template "nexus.name" . }}-data
+      labels:
+{{ include "nexus.labels" . | indent 8 }}
+    spec:
+      accessModes:
+        - {{ .Values.persistence.accessMode | quote }}
+      storageClassName: "{{ .Values.persistence.storageClass }}"
+      resources:
+        requests:
+          storage: {{ .Values.persistence.storageSize | quote }}
