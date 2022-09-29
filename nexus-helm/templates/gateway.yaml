@@ -1,0 +1,30 @@
+{{- $domainName := .Values.domainName -}}
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: {{ template "nexus.fullname" . }}-gateway
+spec:
+  selector:
+    istio: {{ .Values.gateway.istioSelector }}
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE # enables HTTPS on this port
+      credentialName: {{ .Values.gateway.tlsCredentialName }}
+    hosts:
+      - {{ .Values.gateway.httpsHost }}{{ $domainName }}
+      {{- if .Values.nexus.docker.enabled }}
+      {{- range .Values.nexus.docker.registries }}
+      - docker-{{ .name }}{{ $domainName }}
+      {{- end }}
+      {{- end }}
+---

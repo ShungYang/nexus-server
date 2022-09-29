@@ -1,0 +1,47 @@
+{{- $fullName := include "nexus.fullname" . -}}
+{{- $namespace := .Release.Namespace -}}
+{{- $domainName := .Values.domainName -}}
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ $fullName }}-ui
+spec:
+  hosts:
+  - {{ .Values.gateway.httpsHost }}.example.net
+  gateways:
+  - {{ $fullName }}-gateway
+  http:
+  - name: "nexus-ui"
+    match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: {{ include "nexus.fullname" . }}.{{ $namespace }}.svc.cluster.local
+        port:
+          number: {{ .Values.nexus.nexusPort }}
+
+{{ if .Values.nexus.docker.enabled }}
+{{ range $registry := .Values.nexus.docker.registries }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ $fullName }}-docker-{{ $registry.name }}
+spec:
+  hosts:
+  - docker-{{ $registry.name }}{{ $domainName }}
+  gateways:
+  - {{ $fullName }}-gateway
+  http:
+  - name: "docker-{{ $registry.name }}"
+    match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: {{ $fullName }}-docker-{{ $registry.name }}.{{ $namespace }}.svc.cluster.local
+        port:
+          number: {{ $registry.port }}
+{{- end }} {{- /* range of nexus.docker.registries */ -}}
+{{- end }} {{- /* nexus.docker.enabled */ -}}

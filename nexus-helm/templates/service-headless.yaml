@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nexus.fullname" . }}
+{{- if .Values.service.annotations }}
+  annotations:
+{{ toYaml .Values.service.annotations | indent 4 }}
+{{- end }}
+  labels:
+    {{- include "nexus.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.nexus.nexusPort }}
+      protocol: TCP
+      name: nexus-ui
+  clusterIP: None
+  selector:
+    {{- include "nexus.selectorLabels" . | nindent 4 }}
+
+
+{{- if .Values.nexus.docker.enabled }}
+{{- range $registry := .Values.nexus.docker.registries }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nexus.fullname" $ | trunc 49 }}-docker-{{ $registry.name }}
+{{- if $.Values.service.annotations }}
+  annotations:
+{{ toYaml $.Values.service.annotations | indent 4 }}
+{{- end }}
+  labels:
+    {{- include "nexus.labels" $ | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ $registry.port }}
+      protocol: TCP
+      name: docker-{{ $registry.name }}
+  selector:
+    {{- include "nexus.selectorLabels" $ | nindent 4 }}
+{{- end }}
+{{- end }}
